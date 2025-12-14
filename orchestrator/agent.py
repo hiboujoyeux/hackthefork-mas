@@ -1,28 +1,35 @@
 from google.adk.agents.llm_agent import Agent
 from google.genai import types
 
-# Import tools defined in tools.py
-# We assume these exist based on your previous single-agent implementation
 from .tools import (
     run_sql_analysis_tool,
     get_db_knowledge_tool,
     save_integration_decision_tool
 )
 
+# --- Shared Instruction for Sub-Agents ---
+# This ensures they act like functions, not chat bots.
+NON_INTERACTIVE_INSTRUCTION = """
+IMPORTANT: You are a processing engine, not a chat assistant. 
+1. Perform your specific task immediately using your tools.
+2. Output your findings concisely.
+3. DO NOT ask the user "What would you like to do next?".
+4. DO NOT ask for clarification. If data is missing, make a reasonable assumption or note the gap.
+5. Terminate your turn immediately after reporting.
+"""
+
 # --- 1. Integration Sub-Agent ---
 integration_agent = Agent(
     name="integration_agent",
-    description="Responsible for technical feasibility, equipment matching, and process design.",
-    instruction="""
-    You are a Senior Bioprocess Engineer.
-    Your goal is to determine if the transition to Precision Fermentation is technically feasible.
+    description="Calculates technical feasibility and equipment gaps.",
+    instruction=f"""
+    {NON_INTERACTIVE_INSTRUCTION}
     
-    Responsibilities:
-    1. Identify biological requirements (Host Strain, Unit Operations) using SQL tools.
-    2. Compare Client Equipment vs. Required Equipment.
-    3. Identify missing equipment (CapEx requirements).
-    
-    Use the 'run_sql_analysis_tool' to query the database for machine specs and client inventories.
+    You are the Senior Bioprocess Engineer.
+    Task:
+    1. Query database for required equipment vs client inventory.
+    2. List EXACTLY which machines are missing.
+    3. Return the list of missing items to the root agent.
     """,
     tools=[run_sql_analysis_tool, get_db_knowledge_tool],
 )
@@ -30,17 +37,16 @@ integration_agent = Agent(
 # --- 2. Economics Sub-Agent ---
 economics_agent = Agent(
     name="economics_agent",
-    description="Responsible for financial analysis, OpEx, CapEx, and ROI calculations.",
-    instruction="""
-    You are a Financial Analyst specializing in bio-manufacturing.
-    Your goal is to calculate the cost implications of the transition.
+    description="Calculates costs and ROI.",
+    instruction=f"""
+    {NON_INTERACTIVE_INSTRUCTION}
     
-    Responsibilities:
-    1. Calculate the cost of missing equipment (CapEx).
-    2. Estimate Operational Expenses (OpEx) based on utility and feedstock costs.
-    3. Compare current animal-based costs vs. fermentation costs to determine ROI.
-    
-    Use the 'run_sql_analysis_tool' to query the database for equipment prices and utility costs.
+    You are the Financial Analyst.
+    Task:
+    1. Take the technical gaps identified by the previous agent.
+    2. Query database for costs of missing equipment.
+    3. Calculate total CapEx and OpEx.
+    4. Return the final ROI numbers.
     """,
     tools=[run_sql_analysis_tool, get_db_knowledge_tool],
 )
@@ -48,15 +54,14 @@ economics_agent = Agent(
 # --- 3. Regulatory Sub-Agent ---
 regulatory_agent = Agent(
     name="regulatory_agent",
-    description="Responsible for legal compliance, FDA/EFSA regulations, and Novel Foods.",
-    instruction="""
-    You are a Regulatory Affairs Specialist.
-    Your goal is to identify the legal hurdles of introducing this fermentation product.
+    description="Checks legal compliance.",
+    instruction=f"""
+    {NON_INTERACTIVE_INSTRUCTION}
     
-    Responsibilities:
-    1. Assess GRAS (Generally Recognized As Safe) status of the host organism.
-    2. Outline requirements for Novel Food applications (EU) or FDA filings (USA).
-    3. Advise on labeling requirements.
+    You are the Regulatory Specialist.
+    Task:
+    1. Check database for regional compliance rules (GRAS, Novel Food).
+    2. Return a Pass/Fail assessment and specific legal hurdles.
     """,
     tools=[run_sql_analysis_tool],
 )
@@ -64,15 +69,14 @@ regulatory_agent = Agent(
 # --- 4. Quality Sub-Agent ---
 quality_agent = Agent(
     name="quality_agent",
-    description="Responsible for product standards, purity, and sterility assurance.",
-    instruction="""
-    You are a Quality Assurance Manager.
-    Your goal is to ensure the proposed process meets industrial standards.
+    description="Checks quality standards.",
+    instruction=f"""
+    {NON_INTERACTIVE_INSTRUCTION}
     
-    Responsibilities:
-    1. Define sterility requirements for the fermentation process.
-    2. Establish Quality Control (QC) checkpoints.
-    3. Assess the risk of product variability compared to animal-derived ingredients.
+    You are the QA Manager.
+    Task:
+    1. Define sterility and purity requirements found in the database.
+    2. Return a summary of quality risks.
     """,
     tools=[run_sql_analysis_tool],
 )
@@ -80,17 +84,14 @@ quality_agent = Agent(
 # --- 5. Risk Sub-Agent ---
 risk_agent = Agent(
     name="risk_agent",
-    description="Responsible for supply chain, biological, and market risks.",
-    instruction="""
-    You are a Strategic Risk Assessor.
-    Your goal is to identify what could go wrong.
+    description="Analyzes strategic risks.",
+    instruction=f"""
+    {NON_INTERACTIVE_INSTRUCTION}
     
-    Responsibilities:
-    1. Analyze supply chain risks (e.g., single-source feedstock).
-    2. Analyze biological risks (contamination, phage attacks).
-    3. Analyze market adoption risks.
-    
-    Provide a high-level risk mitigation strategy.
+    You are the Risk Strategist.
+    Task:
+    1. Identify supply chain or market risks.
+    2. Return a bulleted list of high-level risks.
     """,
     tools=[],
 )
@@ -101,24 +102,24 @@ root_agent = Agent(
     name='root_agent',
     instruction="""
       You are the "Precision Fermentation Integration Architect".
-      You are the Project Manager orchestrating a feasibility study for a client wanting to switch from animal ingredients to fermentation.
       
-      You manage a team of experts. Your workflow is:
-      1. Receive the user's request (context and budget).
-      2. Delegate technical analysis to the 'integration_agent'.
-      3. Delegate cost analysis to the 'economics_agent' (pass them the technical gaps found).
-      4. Consult 'regulatory_agent', 'quality_agent', and 'risk_agent' for compliance and safety aspects.
-      5. Synthesize all findings into a final recommendation (Go or No-Go).
-      6. Use the 'save_integration_decision_tool' to save the final verdict to the database.
+      CRITICAL OPERATIONAL MODE:
+      - You must execute the ENTIRE workflow below AUTOMATICALLY.
+      - DO NOT stop to ask the user for confirmation between steps.
+      - DO NOT stop to ask "Should I continue?".
+      - If a sub-agent returns data, immediately proceed to the next step.
       
-      Rules:
-      - Do not make up technical data; ask the Integration Agent.
-      - Do not guess costs; ask the Economics Agent.
-      - Always prioritize User Input over Database limits (Hierarchy of Truth).
+      Your Workflow:
+      1. Receive user request.
+      2. Call 'integration_agent' to get technical gaps.
+      3. Call 'economics_agent' (pass the gaps) to get ROI.
+      4. Call 'regulatory_agent', 'quality_agent', and 'risk_agent' sequentially for their reports.
+      5. Synthesize ALL findings into a final recommendation.
+      6. CALL 'save_integration_decision_tool' to write to the DB.
+      7. ONLY THEN, output the final summary to the user.
+      
+      Start immediately.
     """,
-    global_instruction=(
-        "You are the Bio-Integration Architect. You orchestrate a team of agents to validate fermentation projects."
-    ),
     sub_agents=[
         integration_agent,
         economics_agent,
@@ -126,7 +127,6 @@ root_agent = Agent(
         quality_agent,
         risk_agent
     ],
-    # The root agent keeps the tool to save the final report
     tools=[save_integration_decision_tool],
     generate_content_config=types.GenerateContentConfig(
         safety_settings=[
