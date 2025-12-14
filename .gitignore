@@ -1,0 +1,72 @@
+# ==========================================
+# Python & Virtual Environments
+# ==========================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual Environments
+venv/
+.venv/
+env/
+ENV/
+
+# ==========================================
+# Google ADK & Agent Artifacts
+# ==========================================
+# Local ADK configuration and state
+.adk/
+**/.adk/
+
+# ==========================================
+# Secrets & Environment Variables (CRITICAL)
+# ==========================================
+# Never push API keys or secrets
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# ==========================================
+# Database
+# ==========================================
+# Ignore the binary DB file (push schema.sql instead if needed)
+*.db
+*.sqlite
+*.sqlite3
+pf_database.db
+
+# ==========================================
+# IDE & OS Files
+# ==========================================
+# MacOS
+.DS_Store
+
+# VS Code
+.vscode/
+
+# PyCharm / JetBrains
+.idea/
+
+# Windows
+Thumbs.db
